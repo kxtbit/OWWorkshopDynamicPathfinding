@@ -1,3 +1,10 @@
+/*
+ * Overwatch Workshop Dynamic Pathfinding
+ * made by kxtbit#1903 (battle.net / workshop.codes)
+ * originally uploaded at https://github.com/kxtbit/OWWorkshopDynamicPathfinding/blob/main/astarpathfind_reduced.ostw
+ * please credit me if you use this for your stuff, also LGPLv3 and stuff cool bye
+ */
+
 //macro that checks line of sight between cells
 //uses RayCastHitPosition instead of IsInLineOfSight because there was some weird inaccuracies with the latter
 Boolean pathfindLOSCheck(Vector pos, Vector dir): RayCastHitPosition(pos, pos + dir, null, null, false) == pos + dir;
