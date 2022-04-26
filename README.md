@@ -1,6 +1,6 @@
 # OWWorkshopDynamicPathfinding
 Dynamic pathfinding system implemented on the Overwatch Workshop.
-This is the library version written in OSTW, so just include it then use the pathfind() function to do your stuff I guess.
+This is the library version written in OSTW, so just import it then use the pathfind() function to do your stuff I guess.
 
 See https://workshop.codes/DF2JF.
 
