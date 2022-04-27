@@ -93,6 +93,7 @@ globalvar Number[] dualIndex2;
 
 //the function returns a list of vectors containing each point in the path that was found, or an empty array if no path was found.
 public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = true, Number nodeLimit = 1500, Number forceAlgorithm = 0, Number waitThreshold = 10) {
+    //uncomment this to enable debug visualization (2 more below)
     //DestroyEffect(vizEffects);
     //vizEffects = [];
     Boolean listSorted = false;
@@ -212,12 +213,13 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
                 else
                     next[2] = heuristic(lastPos, next[0] + next[1]);
                 priorityQueueAdd(frontier, next, listSorted);
-                CreateEffect(AllPlayers(), Effect.Sphere, Color.Orange, next[0] + next[1], 0.25, EffectRev.None);
-                vizEffects.ModAppend(LastCreatedEntity());
-                if (vizEffects.Length > 150) {
-                    DestroyEffect(vizEffects[0]);
-                    vizEffects.ModRemoveByIndex(0);
-                }
+                //uncomment this to enable debug visualization (1 more below)
+                // CreateEffect(AllPlayers(), Effect.Sphere, Color.Orange, next[0] + next[1], 0.25, EffectRev.None);
+                // vizEffects.ModAppend(LastCreatedEntity());
+                // if (vizEffects.Length > 150) {
+                //     DestroyEffect(vizEffects[0]);
+                //     vizEffects.ModRemoveByIndex(0);
+                // }
             } else {
                 if (useDualIndex) {
                     dualIndex2 = getDualIndex(valKeys, next[1]);
@@ -244,12 +246,13 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
                     else
                         next[2] = heuristic(lastPos, next[0] + next[1]);
                     priorityQueueAdd(frontier, next, listSorted);
-                    CreateEffect(AllPlayers(), Effect.Sphere, Color.Orange, next[0] + next[1], 0.25, EffectRev.None);
-                    vizEffects.ModAppend(LastCreatedEntity());
-                    if (vizEffects.Length > 150) {
-                        DestroyEffect(vizEffects[0]);
-                        vizEffects.ModRemoveByIndex(0);
-                    }
+                    //uncomment this to enable debug visualization
+                    // CreateEffect(AllPlayers(), Effect.Sphere, Color.Orange, next[0] + next[1], 0.25, EffectRev.None);
+                    // vizEffects.ModAppend(LastCreatedEntity());
+                    // if (vizEffects.Length > 150) {
+                    //     DestroyEffect(vizEffects[0]);
+                    //     vizEffects.ModRemoveByIndex(0);
+                    // }
                 }
             }
             if (useDualIndex)
