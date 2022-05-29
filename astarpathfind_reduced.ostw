@@ -14,6 +14,7 @@ Boolean flatLOSCheck(Vector pos, Vector dir):
 //macro to get the correct grid position for a neighbor using the overlayed grid thingy
 Vector moveGridPos(Vector rootPos, Vector pos, Vector dir):
     RayCastHitPosition(pos + dir + Vector(0, 0.25, 0), pos + dir + Vector(0, -9999, 0), null, null, false) - rootPos + Vector(0, 1, 0);
+
 //gets the neighbor nodes of a node
 Any[][] getNeighbors(Any[] node, Vector firstPos, Vector lastPos) {
     Any[][] neighbors = [];
@@ -22,13 +23,39 @@ Any[][] getNeighbors(Any[] node, Vector firstPos, Vector lastPos) {
     Vector pos = rootPos + gridPos;
     foreach (Vector dir in [Forward(), Right(), Backward(), Left(), Backward() + Left(), Left() + Forward(), Forward() + Right(), Right() + Backward()]) {
         if (flatLOSCheck(pos, dir * 1.5)) {
-            //neighbors.ModAppend(scan(rootPos, gridPos, dir.X, dir.Z, 1.5, lastPos));
-            //neighbors.ModAppend([[rootPos, gridPos + dir * 2, 1]]);
             neighbors.ModAppend([[rootPos, moveGridPos(rootPos, pos, dir * 1.5), 1]]);
         }
     }
+
     return neighbors;
 }
+//gets the neighbor nodes of a node, with experimental optimizations
+Any[][] getNeighborsExperimental(Any[] node, Vector firstPos, Vector lastPos) {
+    Any[][] neighbors = [];
+    Vector rootPos = node[0];
+    Vector gridPos = node[1];
+    Vector pos = rootPos + gridPos;
+    foreach (Vector dir in [Forward(), Right(), Backward(), Left(), Backward() + Left(), Left() + Forward(), Forward() + Right(), Right() + Backward()]) {
+        if (flatLOSCheck(pos, dir * 1.5)) {
+            neighbors.ModAppend([[rootPos, moveGridPos(rootPos, pos, dir * 1.5), 1]]);
+        }
+        if (/*DistanceBetween(firstPos, lastPos) > 75 && */DistanceBetween(pos, lastPos) > 50) {
+            Number i = 2;
+            while (flatLOSCheck(pos, dir * (1.5 * i)) && i < 5) {
+                if (RayCastHitPosition(pos + dir * (1.5 * i), pos + dir * (1.5 * i) + Vector(0, -2, 0), null, null, true).Y 
+                <= RayCastHitPosition(pos + dir * (1.5 * (i - 1)), pos + dir * (1.5 * (i - 1)) + Vector(0, -2, 0), null, null, true).Y + 0.75)
+                    neighbors.ModAppend([[rootPos, moveGridPos(rootPos, pos, dir * (1.5 * i)), i]]);
+                else
+                    break;
+                i += 2;
+                antiCrashCounter += 1;
+            }
+        }
+    }
+
+    return neighbors;
+}
+
 
 //adds a node to a priority queue
 void priorityQueueAdd(ref Any[][] list, ref Any[] obj, ref Boolean listSorted) {
@@ -69,18 +96,9 @@ Number[] getDualIndex(ref Any[][] dArray, ref Any value) {
 
 //stores references to all debug effects
 globalvar Any[] vizEffects = [];
-
 //pathfinding heuristic function
-Number heuristic(Vector lastPos, Vector pos): DistanceBetween(lastPos, pos) * 1.005;
+Number heuristic(Vector lastPos, Vector firstPos, Vector pos): DistanceBetween(lastPos, pos) * 1.005;
 
-//multi use variables for pathfind function
-globalvar Number i1;
-globalvar Number i2;
-globalvar Boolean check;
-globalvar Number newCost;
-globalvar Number[] dualIndex;
-globalvar Boolean costCheck;
-globalvar Number[] dualIndex2;
 //the pathfinder itself. firstPos is the starting position, and lastPos is the goal position.
 //if refinePath is off, it disables the path refiner, which causes more steps to be in the resulting path
 //and also may make it longer, but can fix some issues with certain maps
@@ -92,7 +110,7 @@ globalvar Number[] dualIndex2;
 //and values below 5 will cause the algorithm to be slow.
 
 //the function returns a list of vectors containing each point in the path that was found, or an empty array if no path was found.
-public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = true, Number nodeLimit = 1500, Number forceAlgorithm = 0, Number waitThreshold = 10) {
+public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = true, Number nodeLimit = 1500, Number forceAlgorithm = 0, Number waitThreshold = 10, Boolean useExperimentalOptimizations = true) {
     //uncomment this to enable debug visualization (2 more below)
     //DestroyEffect(vizEffects);
     //vizEffects = [];
@@ -108,8 +126,21 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
 
     Boolean useDualIndex = false;
 
+    //some variable stuffs
+    Number i1;
+    Number i2;
+    Boolean check;
+    Number newCost;
+    Number[] dualIndex;
+    Boolean costCheck;
+    Number[] dualIndex2;
+
     priorityQueueAdd(frontier, first, listSorted);
     while (frontier.Length != 0) {
+        //emergency anti-crash wait
+        if (ServerLoad() >= 255) {
+            Wait(0.2);
+        }
         Any[] current = priorityQueueRemove(frontier, waitThreshold, listSorted);
         Number i;
         if (nodeLimit != -1) {
@@ -129,46 +160,60 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
             while (node != null) {
                 finalPath = InsertValueInArray(finalPath, 0, node[0] + node[1]);
                 if (useDualIndex) {
-                    define dualIndex = getDualIndex(valKeys, node[1]);
-                    node = parentsValues[dualIndex[0]][dualIndex[1]];
+                    define di = getDualIndex(valKeys, node[1]);
+                    node = parentsValues[di[0]][di[1]];
                 } else
                     node = parentsValues[valKeys.IndexOf(node[1])];
             }
+            Vector[] finalPathFirst = finalPath;
             Vector[] finalPathRefined;
             if (refinePath) {
                 finalPathRefined = [finalPath[0]];
-                for (i = 0; finalPath.Length; 1) {
-                    Vector pos = finalPath[i];
-                    for (Number n = finalPath.Length-1; i; -1) {
-                        Vector checkPos = finalPath[n];
-                        if (RayCastHitPosition(pos, checkPos, null, null, false) == checkPos && checkPos.Y - pos.Y < 1) {
+                Boolean couldRefine;
+                while (true) {
+                    couldRefine = false;
+                    for (i = 0; finalPath.Length - 1; 1) {
+                        Vector pos = finalPath[i];
+                        Vector checkPos = finalPath[i + 2];
+                        if (finalPathRefined[finalPathRefined.Length - 1] != pos)
+                            finalPathRefined.ModAppend(pos);
+                        if (i + 2 < finalPath.Length && RayCastHitPosition(pos, checkPos, null, null, false) == checkPos && RayCastHitPosition(checkPos, pos, null, null, false) == pos/* && checkPos.Y - pos.Y < 1*/) {
                             Boolean noHole = true;
-                            for (Number v = 0; 5; 1) {
+                            for (Number v = 0; 8; 1) {
                                 Vector lerpPos = LinearInterpolate(pos, checkPos, v / 5);
-                                if (RayCastHitPosition(lerpPos, lerpPos + Vector(0, -2, 0), null, null, false) == lerpPos + Vector(0, -2, 0)) {
+                                if (RayCastHitPosition(lerpPos, lerpPos + Vector(0, -1.25, 0), null, null, false) == lerpPos + Vector(0, -1.25, 0)) {
                                     noHole = false;
                                     break;
                                 }
                             }
                             if (noHole) {
+                                couldRefine = true;
                                 finalPathRefined.ModAppend(checkPos);
-                                i = n-1;
-                                break;
+                                i++; //will be incremented in the next loop
+                            } else {
+                                finalPathRefined.ModAppend(finalPath[i + 1]);
                             }
+                        } else {
+                            finalPathRefined.ModAppend(finalPath[i + 1]);
                         }
                     }
+                    if (couldRefine) {
+                        finalPath = finalPathRefined;
+                        finalPathRefined = [finalPath[0]];
+                    } else break;
                 }
             } else {
                 finalPathRefined = finalPath;
             }
             return finalPathRefined;
         }
-        Any[][] neighbors = getNeighbors(current, firstPos, lastPos);
+        Any[][] neighbors;
+        if (useExperimentalOptimizations)
+            neighbors = getNeighborsExperimental(current, firstPos, lastPos);
+        else
+            neighbors = getNeighbors(current, firstPos, lastPos);
+
         for (i = 0; neighbors.Length; 1) {
-            //if (antiCrashCounter >= 8) {
-            //    Wait(0.016);
-            //    antiCrashCounter = 0;
-            //}
             Any[] next = neighbors[i];
             if (useDualIndex) {
                 define curDualIndex = getDualIndex(valKeys, current[1]);
@@ -186,9 +231,6 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
                     i2 = CountOf(valKeys[i1]);
                     valKeys[i1][i2] = next[1];
                     costsValues[i1][i2] = newCost;
-                    //if (next[3] != 0) 
-                    //    parentsValues[i1][i2] = next[3]; 
-                    //else 
                     parentsValues[i1][i2] = current;
                 } else {
                     if (valKeys.Length == 1000) {
@@ -209,9 +251,9 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
                     }
                 }
                 if (useAStar)
-                    next[2] = newCost + heuristic(lastPos, next[0] + next[1]);
+                    next[2] = newCost + heuristic(lastPos, firstPos, next[0] + next[1]);
                 else
-                    next[2] = heuristic(lastPos, next[0] + next[1]);
+                    next[2] = heuristic(lastPos, firstPos, next[0] + next[1]);
                 priorityQueueAdd(frontier, next, listSorted);
                 //uncomment this to enable debug visualization (1 more below)
                 // CreateEffect(AllPlayers(), Effect.Sphere, Color.Orange, next[0] + next[1], 0.25, EffectRev.None);
@@ -233,18 +275,15 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
                 if (costCheck) {
                     if (useDualIndex) {
                         costsValues[i1][i2] = newCost;
-                        //if (next[3] != 0) 
-                        //    parentsValues[i1][i2] = next[3]; 
-                        //else 
                         parentsValues[i1][i2] = current;
                     } else {
                         costsValues[i1] = newCost;
                         parentsValues[i1] = current;
                     }
                     if (useAStar)
-                        next[2] = newCost + heuristic(lastPos, next[0] + next[1]);
+                        next[2] = newCost + heuristic(lastPos, firstPos, next[0] + next[1]);
                     else
-                        next[2] = heuristic(lastPos, next[0] + next[1]);
+                        next[2] = heuristic(lastPos, firstPos, next[0] + next[1]);
                     priorityQueueAdd(frontier, next, listSorted);
                     //uncomment this to enable debug visualization
                     // CreateEffect(AllPlayers(), Effect.Sphere, Color.Orange, next[0] + next[1], 0.25, EffectRev.None);
@@ -256,7 +295,7 @@ public Vector[] pathfind(Vector firstPos, Vector lastPos, Boolean refinePath = t
                 }
             }
             if (useDualIndex)
-                antiCrashCounter += 5;
+                antiCrashCounter += 8;
         }
     }
     return null;
